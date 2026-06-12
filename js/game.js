@@ -15,6 +15,8 @@
     mode: 'arcade',
     menuSel: 0,
     paused: false,
+    pauseSel: 0,
+    godMode: false,
     time: 0,
     score: 0,
     hiA: parseInt(localStorage.getItem('ma_hiscore') || '0', 10),
@@ -219,17 +221,30 @@
     G.camX = Math.max(minCam, Math.min(Level.W - VW, G.camX));
   }
 
+  const MENU_ITEMS = ['ARCADE MISSION', 'SURVIVAL', 'SETTINGS'];
+  const PAUSE_ITEMS = ['RESUME', 'SETTINGS', 'MAIN MENU'];
+
   // ---------- update ----------
   function update(dt) {
     G.time += dt;
 
+    // pannello impostazioni: priorità massima ovunque
+    if (Settings.isOpen()) { Settings.update(dt); return; }
+
     if (G.state === 'menu') {
-      if (Input.pressed('ArrowUp') || Input.pressed('KeyW') ||
-          Input.pressed('ArrowDown') || Input.pressed('KeyS')) {
-        G.menuSel = 1 - G.menuSel;
+      if (Input.pressed('ArrowDown') || Input.pressed('KeyS')) {
+        G.menuSel = (G.menuSel + 1) % MENU_ITEMS.length;
         SFX.bounce();
       }
-      if (Input.start()) startGame(G.menuSel === 0 ? 'arcade' : 'survival');
+      if (Input.pressed('ArrowUp') || Input.pressed('KeyW')) {
+        G.menuSel = (G.menuSel + MENU_ITEMS.length - 1) % MENU_ITEMS.length;
+        SFX.bounce();
+      }
+      if (Input.start()) {
+        if (G.menuSel === 0) startGame('arcade');
+        else if (G.menuSel === 1) startGame('survival');
+        else if (G.menuSel === 2) Settings.open('menu');
+      }
       return;
     }
     if (G.state === 'gameover') {
@@ -246,9 +261,36 @@
     }
 
     // --- play ---
-    if (Input.pressed('KeyP')) G.paused = !G.paused;
+    // pausa: Esc o tasto P (mentre non in pausa)
+    if (!G.paused && (Input.pressed('Escape') || Input.pressed('KeyP'))) {
+      G.paused = true; G.pauseSel = 0;
+      return;
+    }
+    if (G.paused) {
+      if (Input.pressed('Escape') || Input.pressed('KeyP')) { G.paused = false; return; }
+      if (Input.pressed('ArrowDown') || Input.pressed('KeyS')) {
+        G.pauseSel = (G.pauseSel + 1) % PAUSE_ITEMS.length; SFX.bounce();
+      }
+      if (Input.pressed('ArrowUp') || Input.pressed('KeyW')) {
+        G.pauseSel = (G.pauseSel + PAUSE_ITEMS.length - 1) % PAUSE_ITEMS.length; SFX.bounce();
+      }
+      if (Input.start()) {
+        if (G.pauseSel === 0) G.paused = false;
+        else if (G.pauseSel === 1) Settings.open('pause');
+        else if (G.pauseSel === 2) {
+          SFX.stopMusic();
+          G.paused = false;
+          G.state = 'menu';
+        }
+      }
+      return;
+    }
+
     if (Input.pressed('KeyM')) SFX.toggleMute();
-    if (G.paused) return;
+    if (Input.pressed('F1')) {
+      G.godMode = !G.godMode;
+      Settings.flash(G.godMode ? 'GOD MODE: ON' : 'GOD MODE: OFF');
+    }
 
     if (G.hurtFlash > 0) G.hurtFlash -= dt;
     if (G.combo.t > 0) G.combo.t -= dt;
@@ -387,11 +429,24 @@
       g.restore();
     }
 
+    // badge GOD MODE
+    if (G.godMode) {
+      g.fillStyle = 'rgba(0,0,0,0.6)';
+      g.fillRect(VW - 96, VH - 96, 80, 22);
+      text('GOD', VW - 56, VH - 80, 16, '#9aff8a', 'center');
+    }
+
+    // pausa: menu di scelta
     if (G.paused) {
-      g.fillStyle = 'rgba(0,0,0,0.55)';
+      g.fillStyle = 'rgba(0,0,0,0.65)';
       g.fillRect(0, 0, VW, VH);
-      text('PAUSE', VW / 2, VH / 2, 40, '#fff', 'center');
-      text('P per riprendere — M audio on/off', VW / 2, VH / 2 + 36, 16, '#aaa', 'center');
+      text('PAUSE', VW / 2, VH / 2 - 80, 40, '#fff', 'center');
+      for (let i = 0; i < PAUSE_ITEMS.length; i++) {
+        const sel = (i === G.pauseSel);
+        text((sel ? '> ' : '  ') + PAUSE_ITEMS[i],
+             VW / 2, VH / 2 - 20 + i * 36, 22, sel ? '#fff' : '#9a9a8a', 'center');
+      }
+      text('Frecce + Invio  \u00b7  ESC riprende', VW / 2, VH / 2 + 110, 13, '#888', 'center');
     }
   }
 
@@ -421,19 +476,23 @@
     // comandi
     const cx = VW / 2;
     text('FRECCE / WASD  muovi   ·   GIU\' abbassati   ·   SU mira in alto', cx, 262, 14, '#ddd', 'center');
-    text('SPAZIO salta   ·   J/Z spara   ·   L/X granata   ·   coltello da vicino', cx, 284, 14, '#ddd', 'center');
-    text('Tocca lo SLUG per salire a bordo   ·   L/X cannone   ·   GIU\'+SALTO esci', cx, 306, 14, '#9aff8a', 'center');
-    text('P pausa   ·   M audio', cx, 328, 14, '#999', 'center');
+    text('SPAZIO salta   \u00b7   J/Z spara   \u00b7   L/X granata   \u00b7   coltello da vicino', cx, 284, 14, '#ddd', 'center');
+    text('Tocca lo SLUG per salire a bordo   \u00b7   L/X cannone   \u00b7   GIU\'+SALTO esci', cx, 306, 14, '#9aff8a', 'center');
+    text('ESC pausa   \u00b7   M audio   \u00b7   F1 god mode', cx, 328, 14, '#999', 'center');
 
-    // selezione modalità
-    const selA = G.menuSel === 0, selS = G.menuSel === 1;
-    text((selA ? '> ' : '  ') + 'ARCADE MISSION', cx - 150, 366, 22, selA ? '#fff' : '#9a9a8a');
-    text('HI ' + String(G.hiA).padStart(7, '0'), cx + 130, 366, 15, selA ? '#ffe28a' : '#8a7a5a');
-    text((selS ? '> ' : '  ') + 'SURVIVAL', cx - 150, 402, 22, selS ? '#fff' : '#9a9a8a');
-    text('HI ' + String(G.hiS).padStart(7, '0'), cx + 130, 402, 15, selS ? '#ffe28a' : '#8a7a5a');
+    // selezione modalità (3 voci: arcade / survival / settings)
+    const sel = G.menuSel;
+    const drawRow = (i, label, hi, y) => {
+      const s = (sel === i);
+      text((s ? '> ' : '  ') + label, cx - 150, y, 22, s ? '#fff' : '#9a9a8a');
+      if (hi !== null) text('HI ' + String(hi).padStart(7, '0'), cx + 130, y, 15, s ? '#ffe28a' : '#8a7a5a');
+    };
+    drawRow(0, 'ARCADE MISSION', G.hiA, 360);
+    drawRow(1, 'SURVIVAL',       G.hiS, 392);
+    drawRow(2, 'SETTINGS',       null,  424);
 
     if (Math.floor(G.time * 2) % 2 === 0) {
-      text('PRESS ENTER TO START', cx, 462, 22, '#fff', 'center');
+      text('PRESS ENTER', cx, 472, 22, '#fff', 'center');
     }
     text('Libera i prigionieri (POW) e concatena le uccisioni per punteggi piu\' alti!', cx, 510, 13, '#9aff8a', 'center');
   }
@@ -492,11 +551,12 @@
   // ---------- render ----------
   function render() {
     g.clearRect(0, 0, VW, VH);
-    if (G.state === 'menu') { drawMenu(); return; }
-    if (G.state === 'gameover') { drawGameOver(); return; }
-    if (G.state === 'win') { drawWin(); return; }
-    drawWorld();
-    drawHUD();
+    if (G.state === 'menu') drawMenu();
+    else if (G.state === 'gameover') drawGameOver();
+    else if (G.state === 'win') drawWin();
+    else { drawWorld(); drawHUD(); }
+    // settings overlay sempre sopra a tutto
+    if (Settings.isOpen()) Settings.draw(g, VW, VH);
   }
 
   // ---------- loop a passo fisso ----------

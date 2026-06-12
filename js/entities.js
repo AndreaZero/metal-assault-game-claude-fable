@@ -287,6 +287,8 @@
 
   function killPlayer() {
     const p = G.player;
+    // god mode (debug): nessun danno, solo feedback visivo discreto
+    if (G.godMode) { G.hurtFlash = Math.max(G.hurtFlash, 0.12); return; }
     // a bordo dello SLUG: l'armatura assorbe il colpo
     if (p.inSlug) {
       const s = p.inSlug;
@@ -366,6 +368,7 @@
 
   function damageSlug(s, dmg) {
     if (s.hp <= 0) return;
+    if (G.godMode) { s.flash = 0.06; return; }
     s.hp -= dmg;
     s.flash = 0.1;
     SFX.metalHit();

@@ -19,8 +19,9 @@ It also works via `file://`, no server required.
 | J / Z             | Shoot (auto knife at close range)               |
 | L / X             | Throw grenade (cannon while riding the SLUG)    |
 | Enter             | Start / confirm                                 |
-| P                 | Pause                                           |
+| Esc / P           | Pause (Esc also closes Settings)                |
 | M                 | Toggle audio                                    |
+| F1                | Toggle God Mode (dev)                           |
 
 ## Gameplay
 
@@ -37,14 +38,23 @@ It also works via `file://`, no server required.
 * **Lives**: 3 lives with respawn and temporary invincibility. Bonus score for remaining lives at end of mission. High scores saved in `localStorage`.
 * **Game feel**: hit-stop on impact, recoil, shell casings, impact sparks, dust, screen shake, jump input buffering + coyote time, and adaptive music intensity that increases during bosses and late waves.
 
+## Settings panel
+
+Reach it from the main menu (third entry) or from the in-game pause menu (Esc → SETTINGS). It includes:
+
+* **Audio** — Master / SFX / Music sliders (hold Left/Right), Mute and Music On toggles. Volumes are persisted in `localStorage` (`ma_audio`).
+* **Commands** — every gameplay action (Move, Jump, Fire, Grenade, …) has two rebindable slots. Enter to bind slot 1, Tab for slot 2, Backspace clears slot 2, Esc cancels the capture. Reset button restores defaults. Bindings persisted as `ma_bindings`.
+* **Gameplay** — God Mode toggle (also F1 in-game) for development testing: the player and the SLUG take no damage; a small `GOD` badge appears in the bottom-right of the HUD when active.
+
 ## Code structure
 
 ```
 index.html      — page, canvas, script loader
-js/audio.js     — WebAudio synthesis: sound effects + music loop
-js/input.js     — keyboard handling (down / just-pressed)
+js/audio.js     — WebAudio synthesis with separate master / sfx / music buses
+js/input.js     — keyboard handling, rebindable bindings, key capture
+js/settings.js  — settings overlay (audio, commands, gameplay)
 js/sprites.js   — pixel art from character maps + rectangle-based vehicles
 js/level.js     — terrain, platforms, parallax scenery, spawn table
 js/entities.js  — player, enemy AI, bosses, bullets, explosions, POW, pickups
-js/game.js      — fixed timestep loop (60 Hz), states, camera, HUD, menu
+js/game.js      — fixed timestep loop (60 Hz), states, camera, HUD, menus
 ```
