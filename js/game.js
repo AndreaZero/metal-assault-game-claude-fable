@@ -31,6 +31,7 @@
     enemies: [], pBullets: [], eBullets: [], grenades: [],
     particles: [], flashes: [], corpses: [], pows: [],
     pickups: [], scorePops: [],
+    slugs: [], props: [], warnings: [],
     boss: null,
     bossTriggered: false,
     spawnIdx: 0,
@@ -89,6 +90,7 @@
     G.enemies = []; G.pBullets = []; G.eBullets = []; G.grenades = [];
     G.particles = []; G.flashes = []; G.corpses = []; G.pows = [];
     G.pickups = []; G.scorePops = [];
+    G.slugs = []; G.props = []; G.warnings = [];
     G.boss = null;
     G.bossTriggered = false;
     G.spawnIdx = 0;
@@ -104,12 +106,18 @@
       G.waveSpawnT = 0;
       G.waveBreakT = 1.6;
       G.waveBanner = 0;
+      // barili esplosivi nell'arena
+      Entities.spawnProp(ARENA_X + 170, 'barrel');
+      Entities.spawnProp(ARENA_X + VW - 170, 'barrel');
       SFX.setIntensity(1);
     } else {
       G.camX = 0;
       G.camLockL = 0;
       G.camLockR = Level.W;
       G.player = Entities.createPlayer(120);
+      // SLUG parcheggiati e oggetti distruttibili lungo la missione
+      for (const sx of Level.slugSpawns) Entities.spawnSlug(sx);
+      for (const pr of Level.props) Entities.spawnProp(pr.x, pr.type);
       SFX.setIntensity(0);
     }
     SFX.startMusic();
@@ -152,6 +160,14 @@
     if (n >= 4 && n % 4 === 0) q.push('tank');
     G.waveQueue = q;
     G.waveSpawnT = 1.0;
+    // ricompensa: uno SLUG fresco ogni 6 ondate
+    if (n % 6 === 0 && G.slugs.length === 0) {
+      Entities.spawnSlug(G.camX + VW / 2 + 120);
+    }
+    // rifornisci i barili dell'arena
+    while (G.props.length < 2) {
+      Entities.spawnProp(G.camX + 150 + Math.random() * (VW - 300), 'barrel');
+    }
     SFX.setIntensity(n >= 8 ? 2 : 1);
   }
 
@@ -240,6 +256,7 @@
     // hit-stop: micro-congelamento del mondo per dare peso ai colpi
     if (G.hitStop > 0) {
       G.hitStop -= dt;
+      Entities.bufferInputs(); // non perdere i salti premuti durante il freeze
       updateCamera(dt);
       return;
     }
@@ -248,10 +265,13 @@
     if (G.mode === 'survival') updateSurvival(dt);
     else handleSpawns();
     Entities.updatePlayer(dt);
+    Entities.updateSlugs(dt);
     Entities.updateEnemies(dt);
     Entities.updateBoss(dt);
     Entities.updateBullets(dt);
     Entities.updateGrenades(dt);
+    Entities.updateWarnings(dt);
+    Entities.updateProps(dt);
     Entities.updatePows(dt);
     Entities.updatePickups(dt);
     Entities.updateParticles(dt);
@@ -295,10 +315,21 @@
     }
     text('LIFE', VW - 16, 50, 13, '#fff', 'right');
 
-    // arma e munizioni
-    const w = Entities.WEAPONS[p.weapon];
-    const ammoStr = p.weapon === 'pistol' ? '∞' : String(p.ammo);
-    text(w.name + '  ' + ammoStr, 16, VH - 40, 16, '#7ad0ff');
+    // arma e munizioni (o stato del veicolo)
+    if (p.inSlug) {
+      text('SLUG CANNON  ∞', 16, VH - 40, 16, '#9aff8a');
+      text('ARMOR', 16, VH - 64, 13, '#9aff8a');
+      for (let i = 0; i < p.inSlug.maxHp; i++) {
+        g.fillStyle = '#000';
+        g.fillRect(74 + i * 18, VH - 74, 14, 12);
+        g.fillStyle = i < p.inSlug.hp ? '#9aff8a' : '#3a4a32';
+        g.fillRect(76 + i * 18, VH - 72, 10, 8);
+      }
+    } else {
+      const w = Entities.WEAPONS[p.weapon];
+      const ammoStr = p.weapon === 'pistol' ? '∞' : String(p.ammo);
+      text(w.name + '  ' + ammoStr, 16, VH - 40, 16, '#7ad0ff');
+    }
     // granate
     g.fillStyle = '#000';
     g.fillRect(18, VH - 32 + 2, 10, 12);
@@ -391,7 +422,8 @@
     const cx = VW / 2;
     text('FRECCE / WASD  muovi   ·   GIU\' abbassati   ·   SU mira in alto', cx, 262, 14, '#ddd', 'center');
     text('SPAZIO salta   ·   J/Z spara   ·   L/X granata   ·   coltello da vicino', cx, 284, 14, '#ddd', 'center');
-    text('P pausa   ·   M audio', cx, 306, 14, '#999', 'center');
+    text('Tocca lo SLUG per salire a bordo   ·   L/X cannone   ·   GIU\'+SALTO esci', cx, 306, 14, '#9aff8a', 'center');
+    text('P pausa   ·   M audio', cx, 328, 14, '#999', 'center');
 
     // selezione modalità
     const selA = G.menuSel === 0, selS = G.menuSel === 1;
@@ -442,10 +474,13 @@
     g.save();
     g.translate(0, shakeY);
     Level.drawGround(g, cam, VW, VH);
+    Entities.drawWarnings(g, cam);
+    Entities.drawProps(g, cam);
     Entities.drawPows(g, cam);
     Entities.drawPickups(g, cam);
     Entities.drawEnemies(g, cam);
     Entities.drawBoss(g, cam);
+    Entities.drawSlugs(g, cam);
     if (G.player) Entities.drawPlayer(g, cam);
     Entities.drawGrenades(g, cam);
     Entities.drawBullets(g, cam);

@@ -103,6 +103,34 @@
     bossHit() { tone(150, 0.08, 'square', 0.15, 90); noise(0.06, 0.2, 2500, 600); },
     heliBomb() { tone(900, 0.6, 'sine', 0.1, 250); },
     tankShot() { noise(0.3, 0.7, 1500, 200); tone(90, 0.25, 'square', 0.3, 35); },
+    // cannone del carro alleato: tonfo profondo, più corposo di tankShot
+    slugCannon() {
+      noise(0.35, 0.5, 1200, 150);
+      tone(70, 0.3, 'sawtooth', 0.3, 25);
+      tone(45, 0.35, 'sine', 0.35, 18);
+    },
+    // clangore metallico: il carro alleato viene colpito
+    metalHit() {
+      tone(320, 0.12, 'square', 0.18, 120);
+      tone(900, 0.06, 'triangle', 0.12, 500);
+      noise(0.05, 0.15, 5000, 1500);
+    },
+    // salita a bordo del veicolo: doppio clack meccanico
+    mount() {
+      tone(200, 0.06, 'square', 0.12);
+      tone(150, 0.06, 'square', 0.12, null, 0.08);
+      noise(0.04, 0.1, 3000, 800);
+    },
+    // balzo fuori dal veicolo: effetto molla
+    eject() { tone(250, 0.15, 'triangle', 0.1, 700); },
+    // cassa di legno che si rompe: crack secco
+    crate() {
+      noise(0.12, 0.3, 2500, 500);
+      tone(180, 0.07, 'triangle', 0.15);
+      tone(140, 0.07, 'triangle', 0.15, null, 0.03);
+    },
+    // beep di allarme: mortaio in arrivo (singolo, no ripetizioni)
+    warning() { tone(1100, 0.09, 'square', 0.12); },
     victory() {
       const seq = [523, 523, 523, 659, 784, 1046];
       seq.forEach((f, i) => tone(f, 0.22, 'square', 0.18, null, i * 0.16));

@@ -72,6 +72,29 @@
   const BOSS_TRIGGER_X = 6950; // il boss appare quando il giocatore arriva qui
   const BOSS_X = 7350;         // posizione di stazionamento del boss
 
+  // carri alleati "SLUG" parcheggiati, pilotabili dal giocatore
+  const slugSpawns = [2250, 5480];
+
+  // oggetti distruttibili: 'crate' = cassa bonus, 'barrel' = barile esplosivo
+  // (barili piazzati vicino ai gruppi di nemici, casse nei momenti calmi)
+  const props = [
+    { x: 450, type: 'crate' },
+    { x: 880, type: 'crate' },
+    { x: 1340, type: 'barrel' }, // soldati a 1300/1360
+    { x: 1620, type: 'crate' },
+    { x: 2740, type: 'barrel' }, // soldati a 2620/2700/2780
+    { x: 2900, type: 'crate' },
+    { x: 3000, type: 'barrel' }, // coltelli a 2950/3010
+    { x: 3700, type: 'crate' },
+    { x: 4330, type: 'barrel' }, // grenadier/soldato a 4260/4340
+    { x: 4650, type: 'crate' },
+    { x: 5390, type: 'barrel' }, // soldati a 5330/5410
+    { x: 5820, type: 'crate' },
+    { x: 6350, type: 'crate' },
+    { x: 6470, type: 'barrel' }, // soldati a 6420/6500
+    { x: 6900, type: 'crate' },
+  ];
+
   // ---------------- scenografia (seeded, deterministica) ----------------
   function rng(seed) {
     let s = seed;
@@ -269,6 +292,8 @@
     spawns: spawns,
     BOSS_TRIGGER_X: BOSS_TRIGGER_X,
     BOSS_X: BOSS_X,
+    slugSpawns: slugSpawns,
+    props: props,
     drawBackground: drawBackground,
     drawGround: drawGround,
   };

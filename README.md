@@ -17,7 +17,7 @@ It also works via `file://`, no server required.
 | Up / W            | Aim upward                                      |
 | Space / K         | Jump                                            |
 | J / Z             | Shoot (auto knife at close range)               |
-| L / X             | Throw grenade                                   |
+| L / X             | Throw grenade (cannon while riding the SLUG)    |
 | Enter             | Start / confirm                                 |
 | P                 | Pause                                           |
 | M                 | Toggle audio                                    |
@@ -31,8 +31,11 @@ It also works via `file://`, no server required.
 * **Chain combo**: close-range kills increase score multiplier (up to x3). Chain breaks if hit.
 * **POWs**: rescue bound prisoners for points and weapon crates.
 * **Weapons**: Pistol (infinite), Heavy Machine Gun (H), Spread (S), Rocket (R), Flame Shot (F), plus grenade stock (G).
+* **Rideable SLUG tank**: hop in by touching it, drive with 3 armor points, turret machine gun (fire key, aim up supported), main cannon (grenade key), hop with Jump, eject with Down + Jump. It crushes infantry, blocks light bullets, and explodes ejecting the pilot when armor runs out. Parked along the mission and awarded every 6 survival waves.
+* **Destructibles**: wooden crates (loot: weapons, grenades, points) and red explosive barrels that chain-react and damage everyone — bait enemies near them.
+* **Boss phase 2**: below 60% HP the fortress loses its armor plating and starts telegraphed mortar rains (watch the blinking ground markers).
 * **Lives**: 3 lives with respawn and temporary invincibility. Bonus score for remaining lives at end of mission. High scores saved in `localStorage`.
-* **Game feel**: hit-stop on impact, recoil, shell casings, impact sparks, dust, screen shake, and adaptive music intensity that increases during bosses and late waves.
+* **Game feel**: hit-stop on impact, recoil, shell casings, impact sparks, dust, screen shake, jump input buffering + coyote time, and adaptive music intensity that increases during bosses and late waves.
 
 ## Code structure
 

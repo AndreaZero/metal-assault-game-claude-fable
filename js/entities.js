@@ -30,6 +30,8 @@
       weapon: 'pistol', ammo: Infinity, grenades: 10,
       fireT: 0, animT: 0, inv: 2.0, dead: false, deadT: 0,
       dropT: 0, knifeT: 0, runFrame: 0, recoil: 0,
+      jumpBufT: 0, coyoteT: 0,      // input buffer e coyote time
+      inSlug: null, mountCd: 0,     // veicolo pilotato
     };
   }
 
@@ -43,8 +45,13 @@
     p.fireT -= dt;
     p.knifeT -= dt;
     p.dropT -= dt;
+    p.mountCd -= dt;
     p.recoil = Math.max(0, p.recoil - dt * 45);
     if (p.inv > 0) p.inv -= dt;
+
+    // input buffer del salto (sopravvive a hit-stop e atterraggi imminenti)
+    if (Input.jump()) p.jumpBufT = 0.12;
+    else p.jumpBufT -= dt;
 
     if (p.dead) {
       p.deadT += dt;
@@ -54,6 +61,27 @@
       if (p.y > Level.GROUND) { p.y = Level.GROUND; p.vy = 0; p.vx *= 0.8; }
       if (p.deadT > 1.4) respawn();
       return;
+    }
+
+    // --- a bordo dello SLUG: i controlli sono gestiti da updateSlugs ---
+    if (p.inSlug) {
+      p.crouch = false;
+      p.aimUp = Input.up();
+      return;
+    }
+
+    // --- salita a bordo di uno SLUG libero ---
+    if (p.mountCd <= 0) {
+      for (const s of G.slugs) {
+        if (s.hp > 0 && !s.occupied &&
+            Math.abs(p.x - s.x) < 34 && Math.abs(p.y - s.y) < 60) {
+          s.occupied = true;
+          p.inSlug = s;
+          p.crouch = false;
+          SFX.mount();
+          return;
+        }
+      }
     }
 
     // --- movimento orizzontale ---
@@ -67,15 +95,15 @@
     if (move !== 0) p.facing = move > 0 ? 1 : -1;
     p.aimUp = Input.up();
 
-    // --- salto / drop ---
-    if (Input.jump()) {
-      if (p.onGround) {
-        if (p.crouch && onPlatform(p)) {
-          p.dropT = 0.22; p.y += 4; p.onGround = false; p.vy = 120;
-        } else {
-          p.vy = -780; p.onGround = false; SFX.jump();
-        }
+    // --- salto / drop (con buffer e coyote time) ---
+    if (p.jumpBufT > 0 && (p.onGround || p.coyoteT > 0)) {
+      if (p.crouch && p.onGround && onPlatform(p)) {
+        p.dropT = 0.22; p.y += 4; p.onGround = false; p.vy = 120;
+      } else {
+        p.vy = -780; p.onGround = false; SFX.jump();
       }
+      p.jumpBufT = 0;
+      p.coyoteT = 0;
     }
 
     // --- fisica ---
@@ -105,6 +133,10 @@
       }
       if (p.y > Level.GROUND) { p.y = Level.GROUND; p.vy = 0; p.onGround = true; }
     }
+
+    // coyote time: piccola finestra di salto dopo aver lasciato un bordo
+    if (p.onGround) p.coyoteT = 0.09;
+    else p.coyoteT -= dt;
 
     // sbuffo di polvere all'atterraggio
     if (wasAir && p.onGround) {
@@ -168,6 +200,17 @@
         SFX.knife();
         comboKill(150, e.x, e.y - 60);
         G.hitStop = Math.max(G.hitStop, 0.05);
+        return true;
+      }
+    }
+    // il coltello rompe anche casse e barili
+    for (const pr of G.props) {
+      if (pr.dead) continue;
+      const dx = pr.x - p.x;
+      if (Math.abs(p.y - pr.y) < 40 && Math.abs(dx) < 44 && (dx > 0) === (p.facing > 0)) {
+        destroyProp(pr);
+        p.knifeT = 0.18;
+        SFX.knife();
         return true;
       }
     }
@@ -244,6 +287,15 @@
 
   function killPlayer() {
     const p = G.player;
+    // a bordo dello SLUG: l'armatura assorbe il colpo
+    if (p.inSlug) {
+      const s = p.inSlug;
+      if (s.hitCd <= 0) {
+        damageSlug(s, 1);
+        s.hitCd = 0.8;
+      }
+      return;
+    }
     if (p.dead || p.inv > 0) return;
     p.dead = true; p.deadT = 0;
     p.vy = -560; p.vx = -p.facing * 120;
@@ -268,6 +320,7 @@
 
   function drawPlayer(g, camX) {
     const p = G.player;
+    if (p.inSlug) return; // il pilota è disegnato dentro lo SLUG
     const S = Sprites.player;
     let spr;
     if (p.dead) {
@@ -292,6 +345,239 @@
       g.arc(p.x - camX + p.facing * 26, p.y - 34, 18, -1.1, 1.1);
       g.stroke();
       g.restore();
+    }
+  }
+
+  // ============================================================
+  // SLUG — carro armato alleato pilotabile
+  // ============================================================
+  function spawnSlug(x) {
+    G.slugs.push({
+      x: x, y: Level.GROUND, vx: 0, vy: 0, facing: 1,
+      hp: 3, maxHp: 3, tread: 0, occupied: false,
+      fireT: 0, cannonT: 0, recoil: 0, flash: 0, hitCd: 0,
+      onGround: true, dead: false,
+    });
+  }
+
+  function slugHitbox(s) {
+    return { x: s.x - 38, y: s.y - 46, w: 76, h: 46 };
+  }
+
+  function damageSlug(s, dmg) {
+    if (s.hp <= 0) return;
+    s.hp -= dmg;
+    s.flash = 0.1;
+    SFX.metalHit();
+    G.shake = Math.max(G.shake, 4);
+    if (s.hp <= 0) destroySlug(s);
+  }
+
+  function destroySlug(s) {
+    s.hp = 0;
+    s.dead = true;
+    explode(s.x, s.y - 20, 90, false, true, true);
+    const p = G.player;
+    if (s.occupied && p.inSlug === s) {
+      // espulsione d'emergenza del pilota
+      s.occupied = false;
+      p.inSlug = null;
+      p.vy = -560;
+      p.inv = Math.max(p.inv, 1.5);
+      p.mountCd = 1.2;
+    }
+  }
+
+  function updateSlugs(dt) {
+    const p = G.player;
+    for (const s of G.slugs) {
+      s.fireT -= dt;
+      s.cannonT -= dt;
+      s.hitCd -= dt;
+      if (s.flash > 0) s.flash -= dt;
+      if (s.recoil > 0) s.recoil -= dt * 55;
+
+      // fisica
+      s.vy += GRAV * dt;
+      s.y += s.vy * dt;
+      if (s.y >= Level.GROUND) { s.y = Level.GROUND; s.vy = 0; s.onGround = true; }
+      else s.onGround = false;
+
+      if (!s.occupied || p.dead) { s.vx = 0; continue; }
+
+      // --- guida ---
+      let move = 0;
+      if (Input.left()) move -= 1;
+      if (Input.right()) move += 1;
+      s.vx = move * 210;
+      if (move !== 0) {
+        s.facing = move > 0 ? 1 : -1;
+        s.tread += dt * 70 * move;
+      }
+      s.x += s.vx * dt;
+      s.x = clamp(s.x, G.camLockL + 42, G.camLockR - 42);
+
+      // balzo / uscita (giù + salto = eiezione)
+      if (p.jumpBufT > 0 && s.onGround) {
+        if (Input.downDir()) {
+          s.occupied = false;
+          p.inSlug = null;
+          p.x = s.x; p.y = s.y - 44;
+          p.vy = -520;
+          p.mountCd = 1.0;
+          p.inv = Math.max(p.inv, 0.8);
+          SFX.eject();
+        } else {
+          s.vy = -560;
+          SFX.jump();
+        }
+        p.jumpBufT = 0;
+      }
+      if (!s.occupied) continue;
+
+      // sincronizza il pilota (camera, POW, pickup usano p.x/p.y)
+      p.x = s.x; p.y = s.y;
+      p.facing = s.facing; p.vx = s.vx; p.vy = s.vy;
+
+      // i cingoli schiacciano la fanteria
+      if (Math.abs(s.vx) > 50) {
+        for (const e of G.enemies) {
+          if (e.dead || !isInfantry(e.type)) continue;
+          if (Math.abs(e.x - s.x) < 46 && Math.abs(e.y - s.y) < 50) {
+            killEnemy(e, s.facing);
+            comboKill(ENEMY_PTS[e.type] || 100, e.x, e.y - 60);
+            G.hitStop = Math.max(G.hitStop, 0.04);
+          }
+        }
+      }
+
+      // mitragliatrice di torretta
+      if (Input.fire() && s.fireT <= 0) {
+        const up = Input.up();
+        const mx = up ? s.x + s.facing * 4 : s.x + s.facing * 46;
+        const my = up ? s.y - 62 : s.y - 34;
+        G.pBullets.push({
+          x: mx, y: my,
+          vx: up ? rnd(-40, 40) : s.facing * 980,
+          vy: up ? -980 : rnd(-30, 30),
+          life: 0.9, dmg: 1, type: 'mg',
+        });
+        SFX.mg();
+        muzzleBlast(mx, my, 3);
+        s.fireT = 0.09;
+      }
+
+      // cannone principale (tasto granata)
+      if (Input.grenade() && s.cannonT <= 0) {
+        const up = Input.up();
+        G.grenades.push({
+          kind: 'pshell', x: s.x + s.facing * 42, y: s.y - 36,
+          vx: up ? s.facing * 160 : s.facing * 560,
+          vy: up ? -700 : -160, t: 99,
+        });
+        SFX.slugCannon();
+        s.recoil = 10;
+        G.shake = Math.max(G.shake, 5);
+        muzzleBlast(s.x + s.facing * 50, s.y - 36, 8);
+        s.cannonT = 0.85;
+      }
+    }
+    G.slugs = G.slugs.filter(s => !s.dead);
+  }
+
+  function drawSlugs(g, camX) {
+    for (const s of G.slugs) {
+      const sx = s.x - camX;
+      if (sx < -120 || sx > 960 + 120) continue;
+      Sprites.drawSlug(g, sx, s.y, s.facing, s.tread, s.flash > 0, s.occupied, Math.max(0, s.recoil));
+      // invito a salire quando è libero e vicino
+      if (!s.occupied && s.hp > 0 && G.player && !G.player.dead &&
+          Math.abs(G.player.x - s.x) < 140) {
+        if (Math.floor(G.time * 3) % 2 === 0) {
+          g.fillStyle = '#fff';
+          g.font = 'bold 11px "Courier New", monospace';
+          g.textAlign = 'center';
+          g.fillText('SLUG!', sx, s.y - 62);
+        }
+      }
+    }
+  }
+
+  // ============================================================
+  // DISTRUTTIBILI — casse e barili esplosivi
+  // ============================================================
+  function spawnProp(x, type) {
+    G.props.push({ x: x, y: Level.GROUND, type: type, flash: 0, dead: false });
+  }
+
+  function propHitbox(pr) {
+    if (pr.type === 'barrel') return { x: pr.x - 11, y: pr.y - 30, w: 22, h: 30 };
+    return { x: pr.x - 15, y: pr.y - 26, w: 30, h: 26 };
+  }
+
+  function destroyProp(pr) {
+    if (pr.dead) return;
+    pr.dead = true;
+    if (pr.type === 'barrel') {
+      // esplode e danneggia TUTTI: nemici e giocatore
+      explode(pr.x, pr.y - 14, 85, true, false, true);
+    } else {
+      SFX.crate();
+      for (let i = 0; i < 9; i++) {
+        G.particles.push({
+          x: pr.x + rnd(-12, 12), y: pr.y - rnd(2, 22),
+          vx: rnd(-160, 160), vy: rnd(-280, -80),
+          t: 0, life: rnd(0.35, 0.7), color: Math.random() < 0.5 ? '#8a6a3c' : '#5e4626',
+          size: rnd(3, 6), grav: 900,
+        });
+      }
+      // bottino: arma, granate o punti
+      const r = Math.random();
+      if (r < 0.22) {
+        const gifts = ['mg', 'spread', 'rocket', 'flame'];
+        spawnPickup(pr.x, gifts[Math.floor(Math.random() * gifts.length)]);
+      } else if (r < 0.42) {
+        spawnPickup(pr.x, 'grenades');
+      } else {
+        addScore(100, pr.x, pr.y - 36);
+      }
+    }
+  }
+
+  function updateProps(dt) {
+    for (const pr of G.props) {
+      if (pr.flash > 0) pr.flash -= dt;
+    }
+    G.props = G.props.filter(pr => !pr.dead);
+  }
+
+  function drawProps(g, camX) {
+    for (const pr of G.props) {
+      const sx = pr.x - camX;
+      if (sx < -60 || sx > 960 + 60) continue;
+      if (pr.type === 'barrel') Sprites.drawBarrel(g, sx, pr.y, pr.flash > 0);
+      else Sprites.drawWoodCrate(g, sx, pr.y, pr.flash > 0);
+    }
+  }
+
+  // ============================================================
+  // TELEGRAPH — indicatori dei colpi di mortaio in arrivo
+  // ============================================================
+  function updateWarnings(dt) {
+    for (const w of G.warnings) {
+      w.t -= dt;
+      if (w.t <= 0) {
+        w.dead = true;
+        G.grenades.push({ kind: 'shell', x: w.x, y: -30, vx: 0, vy: 420, t: 99 });
+      }
+    }
+    G.warnings = G.warnings.filter(w => !w.dead);
+  }
+
+  function drawWarnings(g, camX) {
+    for (const w of G.warnings) {
+      // il lampeggio dello sprite è calibrato per t <= 0.7
+      Sprites.drawWarning(g, w.x - camX, Level.GROUND, Math.min(w.t, 0.7));
     }
   }
 
@@ -676,6 +962,7 @@
       state: 'enter', t: 0, fireT: 2.0, mgT: 4.0, spawnT: 6.0,
       flash: 0, tread: 0, recoil: 0, dieT: 0, minions: 0,
       mgBurst: 0, mgShotT: 0,
+      phase2: false, rainT: 0,
     };
   }
 
@@ -717,6 +1004,49 @@
     const enraged = b.hp < b.maxHp * 0.35;
     const mul = enraged ? 0.62 : 1;
     b.fireT -= dt; b.mgT -= dt; b.spawnT -= dt;
+
+    // --- FASE 2 (sotto il 60%): la corazza salta, parte la pioggia di mortaio ---
+    if (!b.phase2 && b.hp <= b.maxHp * 0.6) {
+      b.phase2 = true;
+      explode(b.x - 50, b.y - 90, 60, false, true);
+      explode(b.x + 40, b.y - 60, 50, false, false);
+      G.shake = Math.max(G.shake, 12);
+      b.rainT = 2.0;
+      // placche di corazza che volano via
+      for (let i = 0; i < 12; i++) {
+        G.particles.push({
+          x: b.x + rnd(-80, 80), y: b.y - rnd(40, 110),
+          vx: rnd(-260, -40), vy: rnd(-420, -180),
+          t: 0, life: rnd(0.6, 1.1), color: Math.random() < 0.5 ? '#5c5a48' : '#403e30',
+          size: rnd(5, 10), grav: 900,
+        });
+      }
+    }
+    if (b.phase2) {
+      // fumo dalla corazza danneggiata
+      if (Math.random() < dt * 8) {
+        G.particles.push({
+          x: b.x + rnd(-70, 30), y: b.y - rnd(70, 115),
+          vx: rnd(-15, 15), vy: rnd(-70, -30),
+          t: 0, life: rnd(0.6, 1.2), color: Math.random() < 0.3 ? '#ff8a3a' : '#666',
+          size: rnd(4, 9), grav: -120,
+        });
+      }
+      // pioggia di mortaio telegrafata
+      b.rainT -= dt;
+      if (b.rainT <= 0 && !p.dead) {
+        SFX.warning();
+        const n = enraged ? 5 : 4;
+        for (let i = 0; i < n; i++) {
+          const wx = clamp(
+            p.x + rnd(-220, 220) + (i - n / 2) * 70,
+            G.camX + 50, G.camX + 910
+          );
+          G.warnings.push({ x: wx, t: 0.75 + i * 0.1 });
+        }
+        b.rainT = (enraged ? 4.6 : 6.0);
+      }
+    }
 
     // colpi di cannone ad arco (3 proiettili)
     if (b.fireT <= 0 && !p.dead) {
@@ -806,6 +1136,18 @@
         b.dead = true; continue;
       }
       const r = b.type === 'flame' ? 6 + b.t * 26 : 4;
+      // contro i distruttibili
+      for (const pr of G.props) {
+        if (pr.dead) continue;
+        const hb = propHitbox(pr);
+        if (overlap(b.x - r, b.y - r, r * 2, r * 2, hb.x, hb.y, hb.w, hb.h)) {
+          if (b.type === 'rocket') explode(b.x, b.y, 85, false, false, true);
+          else destroyProp(pr);
+          b.dead = true;
+          break;
+        }
+      }
+      if (b.dead) continue;
       // contro i nemici
       for (const e of G.enemies) {
         if (e.dead) continue;
@@ -842,7 +1184,18 @@
       b.y += b.vy * dt;
       b.life -= dt;
       if (b.life <= 0 || b.y >= Level.GROUND + 2) { b.dead = true; continue; }
-      if (!p.dead && p.inv <= 0) {
+      // gli SLUG bloccano i proiettili leggeri (solo gli esplosivi li danneggiano)
+      for (const s of G.slugs) {
+        if (s.hp <= 0) continue;
+        const hb = slugHitbox(s);
+        if (overlap(b.x - 3, b.y - 3, 6, 6, hb.x, hb.y, hb.w, hb.h)) {
+          hitSparks(b.x, b.y, b.vx >= 0 ? 1 : -1);
+          b.dead = true;
+          break;
+        }
+      }
+      if (b.dead) continue;
+      if (!p.dead && !p.inSlug && p.inv <= 0) {
         const hb = playerHitbox(p);
         if (overlap(b.x - 3, b.y - 3, 6, 6, hb.x, hb.y, hb.w, hb.h)) {
           killPlayer();
@@ -911,7 +1264,7 @@
   // GRANATE / BOMBE / PROIETTILI BALISTICI
   // ============================================================
   function updateGrenades(dt) {
-    const GRAV_BY_KIND = { pgren: 1700, egren: 1700, bomb: 1400, shell: 900, erkt: 0 };
+    const GRAV_BY_KIND = { pgren: 1700, egren: 1700, bomb: 1400, shell: 900, erkt: 0, pshell: 900 };
     for (const gr of G.grenades) {
       gr.vy += GRAV_BY_KIND[gr.kind] * dt;
       gr.x += gr.vx * dt;
@@ -968,15 +1321,44 @@
             explode(gr.x, gr.y, 80, false, false, true);
           }
         }
+      } else if (gr.kind === 'pshell') {
+        // colpo di cannone dello SLUG: esplode su terreno, nemici o boss
+        if (gr.y >= Level.GROUND) {
+          gr.dead = true;
+          explode(gr.x, Level.GROUND - 8, 95, false, false, true);
+          continue;
+        }
+        for (const e of G.enemies) {
+          if (e.dead) continue;
+          const hb = enemyHitbox(e);
+          if (overlap(gr.x - 7, gr.y - 7, 14, 14, hb.x, hb.y, hb.w, hb.h)) {
+            gr.dead = true;
+            explode(gr.x, gr.y, 95, false, false, true);
+            break;
+          }
+        }
+        if (!gr.dead && G.boss && G.boss.state === 'fight') {
+          const hb = bossHitbox(G.boss);
+          if (overlap(gr.x - 7, gr.y - 7, 14, 14, hb.x, hb.y, hb.w, hb.h)) {
+            gr.dead = true;
+            explode(gr.x, gr.y, 95, false, false, true);
+          }
+        }
       } else {
-        // egren / bomb / shell / erkt: ostili, esplodono al suolo o sul giocatore
+        // egren / bomb / shell / erkt: ostili, esplodono al suolo o sul bersaglio
         if (gr.y >= Level.GROUND) {
           gr.dead = true;
           explode(gr.x, Level.GROUND - 6, gr.kind === 'shell' ? 80 : 72, true, false, false);
           continue;
         }
         const p = G.player;
-        if (!p.dead && p.inv <= 0) {
+        if (p.inSlug) {
+          const hb = slugHitbox(p.inSlug);
+          if (overlap(gr.x - 6, gr.y - 6, 12, 12, hb.x, hb.y, hb.w, hb.h)) {
+            gr.dead = true;
+            explode(gr.x, gr.y, 72, true, false, false);
+          }
+        } else if (!p.dead && p.inv <= 0) {
           const hb = playerHitbox(p);
           if (overlap(gr.x - 6, gr.y - 6, 12, 12, hb.x, hb.y, hb.w, hb.h)) {
             gr.dead = true;
@@ -991,15 +1373,22 @@
   function drawGrenades(g, camX) {
     for (const gr of G.grenades) {
       const sx = gr.x - camX;
-      if (gr.kind === 'shell') {
+      if (gr.kind === 'shell' || gr.kind === 'pshell') {
+        const friendly = gr.kind === 'pshell';
         g.save();
         g.translate(sx, gr.y);
         g.rotate(Math.atan2(gr.vy, gr.vx));
-        g.fillStyle = '#2e2c26';
+        g.fillStyle = friendly ? '#4a5a38' : '#2e2c26';
         g.fillRect(-8, -5, 16, 10);
-        g.fillStyle = '#55524a';
+        g.fillStyle = friendly ? '#ffd76a' : '#55524a';
         g.fillRect(4, -5, 4, 10);
         g.restore();
+        if (friendly && Math.random() < 0.5) {
+          G.particles.push({
+            x: gr.x - gr.vx * 0.02, y: gr.y, vx: rnd(-15, 15), vy: rnd(-20, 10),
+            t: 0, life: 0.25, color: '#bbb', size: rnd(2, 4), grav: -40,
+          });
+        }
       } else if (gr.kind === 'erkt') {
         g.save();
         g.translate(sx, gr.y);
@@ -1048,10 +1437,23 @@
       });
     }
 
+    // qualunque esplosione innesca i distruttibili vicini (reazioni a catena)
+    for (const pr of G.props) {
+      if (pr.dead) continue;
+      const dx = pr.x - x, dy = (pr.y - 14) - y;
+      if (dx * dx + dy * dy < (r + 16) * (r + 16)) destroyProp(pr);
+    }
+
     // danni ad area
     if (hostileToPlayer) {
       const p = G.player;
-      if (!p.dead && p.inv <= 0) {
+      // gli SLUG nel raggio assorbono il danno
+      for (const s of G.slugs) {
+        if (s.hp <= 0) continue;
+        const dx = s.x - x, dy = (s.y - 22) - y;
+        if (dx * dx + dy * dy < (r + 20) * (r + 20)) damageSlug(s, 1);
+      }
+      if (!p.inSlug && !p.dead && p.inv <= 0) {
         const dx = p.x - x, dy = (p.y - 28) - y;
         if (dx * dx + dy * dy < r * r) killPlayer();
       }
@@ -1297,5 +1699,17 @@
     drawScorePops: drawScorePops,
     explode: explode,
     addScore: addScore,
+    spawnSlug: spawnSlug,
+    updateSlugs: updateSlugs,
+    drawSlugs: drawSlugs,
+    spawnProp: spawnProp,
+    updateProps: updateProps,
+    drawProps: drawProps,
+    updateWarnings: updateWarnings,
+    drawWarnings: drawWarnings,
+    bufferInputs: function () {
+      const p = G.player;
+      if (p && Input.jump()) p.jumpBufT = 0.12;
+    },
   };
 })();

@@ -405,5 +405,137 @@
     g.restore();
   };
 
+  // SLUG: carro alleato pilotabile (~76x50 + cannone), x,y = centro base
+  // di default guarda a DESTRA (al contrario di drawTank)
+  Sprites.drawSlug = function (g, x, y, facing, tread, flash, occupied, cannonRecoil) {
+    g.save();
+    g.translate(Math.round(x), Math.round(y));
+    if (facing < 0) g.scale(-1, 1);
+    const body = flash ? '#c8dca8' : '#5a7d3c';
+    const dark = flash ? '#a8bc88' : '#3e5a28';
+    const accent = flash ? '#d4e4b8' : '#6f8a4a';
+    // cingoli tozzi
+    g.fillStyle = '#2e2c22';
+    g.fillRect(-34, -16, 68, 16);
+    g.fillRect(-38, -12, 76, 8);
+    g.fillStyle = '#4a4636';
+    for (let i = 0; i < 6; i++) {
+      const tx = -32 + ((i * 11 + Math.floor(tread)) % 64);
+      g.fillRect(tx, -14, 5, 12);
+    }
+    // scafo arrotondato (rettangoli sovrapposti per simulare le curve)
+    g.fillStyle = body;
+    g.fillRect(-36, -30, 72, 16);
+    g.fillRect(-32, -34, 64, 6);
+    g.fillStyle = dark;
+    g.fillRect(-36, -19, 72, 5);
+    g.fillStyle = accent;
+    g.fillRect(-30, -33, 56, 3);
+    // torretta a cupola
+    g.fillStyle = body;
+    g.fillRect(-16, -46, 32, 14);
+    g.fillRect(-12, -50, 24, 6);
+    g.fillStyle = dark;
+    g.fillRect(-16, -35, 32, 3);
+    // portello + pilota (se occupato spunta la testa)
+    if (occupied) {
+      g.fillStyle = '#e8b486';
+      g.fillRect(-5, -56, 10, 8);
+      g.fillStyle = '#c23b22';
+      g.fillRect(-6, -58, 12, 4);
+    } else {
+      g.fillStyle = dark;
+      g.fillRect(-7, -52, 14, 4);
+    }
+    // cannone in avanti (verso destra), arretra di cannonRecoil
+    const rec = cannonRecoil || 0;
+    g.fillStyle = '#3a3830';
+    g.fillRect(14 - rec, -45, 46, 7);
+    g.fillStyle = '#55524a';
+    g.fillRect(54 - rec, -45, 6, 7);
+    // stella bianca sul fianco
+    g.fillStyle = '#ffffff';
+    g.fillRect(-6, -28, 8, 8);
+    g.fillRect(-9, -25, 14, 2);
+    g.restore();
+  };
+
+  // barile esplosivo (~22x30), x,y = centro base a terra
+  Sprites.drawBarrel = function (g, x, y, flash) {
+    g.save();
+    g.translate(Math.round(x), Math.round(y));
+    const red = flash ? '#e88a7e' : '#b03a2e';
+    const dark = flash ? '#c06a5a' : '#7a2a20';
+    g.fillStyle = red;
+    g.fillRect(-11, -28, 22, 28);
+    // fasce scure
+    g.fillStyle = dark;
+    g.fillRect(-11, -28, 22, 3);
+    g.fillRect(-11, -16, 22, 3);
+    g.fillRect(-11, -4, 22, 3);
+    // tappo
+    g.fillStyle = '#3a3830';
+    g.fillRect(-4, -30, 8, 3);
+    // teschio stilizzato
+    g.fillStyle = '#ffffff';
+    g.fillRect(-4, -13, 8, 6);
+    g.fillStyle = dark;
+    g.fillRect(-3, -11, 2, 2);
+    g.fillRect(1, -11, 2, 2);
+    g.fillStyle = '#ffffff';
+    g.fillRect(-2, -7, 4, 2);
+    g.restore();
+  };
+
+  // cassa di legno distruttibile (~30x26), x,y = centro base a terra
+  Sprites.drawWoodCrate = function (g, x, y, flash) {
+    g.save();
+    g.translate(Math.round(x), Math.round(y));
+    const wood = flash ? '#d8c098' : '#8a6a3c';
+    const edge = flash ? '#b89c70' : '#6e5430';
+    const cross = flash ? '#a88a5c' : '#5e4626';
+    g.fillStyle = wood;
+    g.fillRect(-15, -26, 30, 26);
+    // bordi
+    g.fillStyle = edge;
+    g.fillRect(-15, -26, 30, 3);
+    g.fillRect(-15, -3, 30, 3);
+    g.fillRect(-15, -26, 3, 26);
+    g.fillRect(12, -26, 3, 26);
+    // croce di rinforzo diagonale
+    g.fillStyle = cross;
+    for (let i = 0; i < 5; i++) {
+      g.fillRect(-11 + i * 4, -22 + i * 4, 5, 4);
+      g.fillRect(6 - i * 4, -22 + i * 4, 5, 4);
+    }
+    g.restore();
+  };
+
+  // indicatore di pericolo per mortai: x,y = punto d'impatto, t = secondi rimanenti
+  Sprites.drawWarning = function (g, x, y, t) {
+    // lampeggio sempre più rapido man mano che t scende
+    if (Math.floor(t * (6 + (0.7 - t) * 30)) % 2 !== 0) return;
+    g.save();
+    g.translate(Math.round(x), Math.round(y));
+    // ellisse schiacciata a terra
+    g.globalAlpha = 0.35;
+    g.fillStyle = '#e83a2a';
+    g.beginPath();
+    g.save();
+    g.scale(1, 8 / 24);
+    g.arc(0, 0, 24, 0, Math.PI * 2);
+    g.restore();
+    g.fill();
+    // punto esclamativo con ombra nera
+    g.globalAlpha = 1;
+    g.fillStyle = '#000000';
+    g.fillRect(-2, -29, 6, 12);
+    g.fillRect(-2, -13, 6, 5);
+    g.fillStyle = '#e83a2a';
+    g.fillRect(-3, -30, 6, 12);
+    g.fillRect(-3, -14, 6, 5);
+    g.restore();
+  };
+
   window.Sprites = Sprites;
 })();
